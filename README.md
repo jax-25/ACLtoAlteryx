@@ -19,7 +19,7 @@ rebuilds.
 3. Run the app:
    `npm run dev`
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/cfa10b49-1af9-4308-926e-319bf010a2e4" alt="ACLtoAlteryx application interface" width="900">
+  <img src="https://github.com/user-attachments/assets/9511fdcd-93c7-4fe4-8989-398cc9924f17" alt="ACLtoAlteryx application interface" width="900">
 </p>
 
 <p align="center">
