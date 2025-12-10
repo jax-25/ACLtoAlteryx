@@ -1,0 +1,5 @@
+{
+  "name": "Script Workflow Converter",
+  "description": "Open source tool for transforming scripts into structured XML workflows.",
+  "requestFramePermissions": []
+}
