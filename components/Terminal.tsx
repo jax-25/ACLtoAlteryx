@@ -25,7 +25,7 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, className = '' }) => {
   };
 
   return (
-    <div className={`rounded-xl overflow-hidden bg-[#18181b] border border-white/10 shadow-2xl font-mono text-xs ${className}`}>
+    <div className={`rounded-xl overflow-hidden bg-[#18181b] border border-white/10 shadow-2xl font-mono text-xs min-h-[400px] ${className}`}>
       {/* Terminal Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#27272a] border-b border-white/5">
         <div className="flex items-center gap-2">
@@ -41,7 +41,7 @@ export const Terminal: React.FC<TerminalProps> = ({ logs, className = '' }) => {
       </div>
 
       {/* Logs Area */}
-      <div className="p-4 h-[250px] overflow-y-auto custom-scrollbar bg-[#18181b] text-slate-300 space-y-2">
+      <div className="p-4 h-[400px] overflow-y-auto custom-scrollbar bg-[#18181b] text-slate-300 space-y-2">
         {logs.length === 0 && (
           <div className="text-slate-600 italic">Waiting for input stream...</div>
         )}

@@ -1,133 +1,136 @@
 
 import { GoogleGenAI } from "@google/genai";
+import { SchemaField } from "../types";
 
-const ALTERYX_JSON_SYSTEM_INSTRUCTION = `
-You are an expert Alteryx Workflow Architect. 
-Your task is to parse raw ACL (Audit Command Language) or Script Text into a structured **Alteryx JSON Intermediate Representation (IR)**.
+const SCHEMA_INFERENCE_SYSTEM_INSTRUCTION = `
+You are a highly skilled data analyst specializing in Alteryx.
+Your task is to analyze a raw CSV text sample and infer its schema.
+Respond with a JSON array where each object contains a "name" and a "type".
+The "type" MUST be a valid Alteryx data type.
 
-**Goal:** 
-Map linear script logic into a Directed Acyclic Graph (DAG) of Alteryx Tools.
+Common Alteryx Data Types:
+- V_WString: Variable-length wide string (for most text).
+- V_String: Variable-length narrow string.
+- Int64: 64-bit integer (for whole numbers).
+- Double: Double-precision floating-point number (for decimals).
+- Date: YYYY-MM-DD.
+- DateTime: YYYY-MM-DD HH:MM:SS.
 
-**Mapping Logic:**
-1. **INPUT/OPEN** -> \`InputData\` Tool
-2. **EXTRACT/FILTER IF** -> \`Filter\` Tool
-3. **SUMMARIZE ON** -> \`Summarize\` Tool
-4. **SORT ON** -> \`Sort\` Tool
-5. **DEFINE FIELD** -> \`Formula\` Tool
-6. **JOIN** -> \`Join\` Tool
-7. **OUTPUT** -> \`OutputData\` Tool
+RULES:
+1. Analyze the first few rows to determine the most appropriate data type.
+2. If a column contains mixed types (e.g., numbers and text), default to V_WString.
+3. Clean the column names: remove quotes, trim whitespace.
+4. Your response MUST be only the raw JSON array, nothing else.
 
-**CRITICAL SYNTAX RULES (MUST FOLLOW):**
-1. **Formula Syntax**: You MUST use Alteryx specific syntax.
-   - ✅ CORRECT: \`IF [Amount] > 1000 THEN "High" ELSE "Low" ENDIF\`
-   - ❌ INCORRECT: \`IF([Amount] > 1000, "High", "Low")\` (Do NOT use Excel style)
-   - ✅ CORRECT: \`DateTimeYear(DateTimeParse([Date_String], "%Y-%m-%d"))\` (Parse CSV strings before using Date functions)
-   
-2. **Data Types**: 
-   - CSV inputs are Strings by default. If performing math, wrap in \`ToNumber([Field])\`.
-   - If performing Date logic on CSV inputs, wrap in \`DateTimeParse([Field], "%Y-%m-%d")\`.
+Example Input:
+"Vendor ID","Invoice Date","Amount"
+"V-1001","2023-01-15","150.75"
+"V-1002","2023-01-16","2,345.00"
 
-**Required JSON Output Schema:**
+Example Output:
+[
+  {"name": "Vendor_ID", "type": "V_WString"},
+  {"name": "Invoice_Date", "type": "Date"},
+  {"name": "Amount", "type": "Double"}
+]
+`;
+
+const ACL_TO_CANONICAL_JSON_SYSTEM_INSTRUCTION = `
+You are an AI assistant embedded inside an app that converts ACL analytics code into a canonical JSON representation of an Alteryx-style workflow.
+Your output is not the final XML.
+Your only job is to:
+Read ACL code.
+Identify workflow nodes/tools and their relationships.
+Emit canonical JSON that matches a strict envelope and per-node structure so that downstream code can safely convert it to XML (.yxmd) without using an LLM.
+
+1. Overall Envelope You Must Always Return
+You must always return JSON with this exact high-level structure:
 {
-  "workflowName": "string",
-  "nodes": [
-    {
-      "id": number,
-      "toolType": "InputData" | "Filter" | "Summarize" | "Sort" | "Formula" | "Join" | "Select" | "OutputData",
-      "configuration": {
-        // Tool specific props
-        "fileName": "string (for inputs)",
-        "fileFormat": "string (e.g. 'csv', 'yxdb')", 
-        "expression": "string (for filters/formulas - USE STRICT ALTERYX SYNTAX)",
-        "summaries": [ { "field": "string", "action": "GroupBy|Sum|Count" } ],
-        "sortFields": [ { "field": "string", "order": "Asc|Desc" } ],
-        "formulas": [ { "field": "string", "expression": "string", "type": "string (e.g. Int64, V_WString)" } ]
-      },
-      "annotation": "string (Short description of step)"
-    }
-  ],
-  "connections": [
-    { 
-      "fromId": number, 
-      "toId": number, 
-      "fromAnchor": "Output" | "True" | "False" | "Left" | "Right" | "Join", 
-      "toAnchor": "Input" | "Left" | "Right" 
-    }
-  ]
+  "workflow": {
+    "version": "1.0",
+    "source": "ACL",
+    "schema_version": "v1"
+  },
+  "nodes": [],
+  "connections": [],
+  "unmapped_acl": []
 }
+Do not change the top-level keys. Do not add additional top-level keys. If there are no connections or unmapped ACL lines, return empty arrays.
+
+2. Node-Level Structure
+Each entry in nodes must follow this structure:
+{
+  "node_id": "N1",
+  "schema_id": "Input",
+  "acl_source": "...",
+  "config": {}
+}
+- node_id: Must be unique per node (e.g., "N1", "N2").
+- schema_id: Must be one of: "Input", "Output", "Filter", "Summarize", "Sort", "Formula".
+- acl_source: The raw ACL line(s) this node represents.
+- config: Node-specific settings.
+
+3. Specific Node Schema Examples
+
+- Input:
+  "schema_id": "Input",
+  "config": { "table_name": "AP_Transactions" }
+
+- Output:
+  "schema_id": "Output",
+  "config": { "table_name": "final_summary.yxdb" }
+
+- Filter:
+  "schema_id": "Filter",
+  "config": { "filter_expression": "Amount >= 100000" }
+
+- Summarize:
+  - IMPORTANT RULE: If the ACL command includes 'SUBTOTAL', the action in 'agg_fields' MUST be 'Sum'.
+  "schema_id": "Summarize",
+  "config": {
+    "group_fields": ["Vendor_ID"],
+    "agg_fields": [
+      { "field": "Amount", "action": "Sum", "rename": "Total_Amount" }
+    ]
+  }
+
+- Formula:
+  - Group multiple consecutive 'DEFINE FIELD ... COMPUTED' statements into a single Formula node.
+  "schema_id": "Formula",
+  "config": {
+    "formulas": [
+      { "field": "Inv_Year", "expression": "YEAR(Invoice_Date)" },
+      { "field": "High_Value", "expression": "IF(Amount >= 100000, 1, 0)" }
+    ]
+  }
+
+- Sort:
+  - A leading '-' on a field name in ACL (e.g., -Amount) indicates 'Descending' order.
+  "schema_id": "Sort",
+  "config": {
+    "sort_keys": [
+      { "field": "Risk_Score", "order": "Ascending" },
+      { "field": "Amount", "order": "Descending" }
+    ],
+    "output_table": "AP_Sorted_RiskScore"
+  }
+
+4. Connections Between Nodes
+If one step depends on another, create a connection object using the node_ids. If the order is linear, chain them sequentially.
+"connections": [ { "from": "N1", "to": "N2" } ]
+
+5. Handling Unmapped ACL
+If you cannot confidently map an ACL line, add it to the 'unmapped_acl' array.
+
+6. Output Format Rules
+Output only valid JSON. No comments. No extra text. All strings must use double quotes. No trailing commas. If you cannot parse the ACL, return a valid envelope with empty arrays and an explanation in 'unmapped_acl'.
+
+7. What You Must NOT Do
+- Do not output XML.
+- Do not invent new top-level JSON keys or schema_ids.
+- Do not summarize the script; be a structured translator.
 `;
 
-const ALTERYX_XML_SYSTEM_INSTRUCTION = `
-You are an Alteryx XML Engine. 
-Your input is a **JSON Plan** representing an Alteryx Workflow.
-Your task is to convert this JSON plan into a valid **Alteryx .yxmd XML** document.
-
-**STRICT OUTPUT RULES:**
-1. Root Element: \`<AlteryxDocument yxmdVer="2023.1">\`
-2. Structure:
-   \`\`\`xml
-   <AlteryxDocument>
-     <Nodes>
-       <!-- Tool definitions -->
-     </Nodes>
-     <Connections>
-       <!-- Wires -->
-     </Connections>
-   </AlteryxDocument>
-   \`\`\`
-
-**FILE FORMATTING RULES (Crucial for Execution):**
-- **CSV Files**: Use \`FileFormat="0"\`. Example: \`<File FileFormat="0">data.csv</File>\`
-- **YXDB Files**: Use \`FileFormat="19"\`. Example: \`<File FileFormat="19">output.yxdb</File>\`
-- **XLSX Files**: Use \`FileFormat="25"\`.
-- DO NOT use generic tags like \`<FileType>Abcd</FileType>\`. Rely on the \`FileFormat\` attribute inside \`<File>\`.
-
-**PLUGIN MAPPINGS:**
-- InputData: \`Plugin="AlteryxBasePluginsGui.InputData.InputData"\`
-- Filter: \`Plugin="AlteryxBasePluginsGui.Filter.Filter"\`
-- Summarize: \`Plugin="AlteryxBasePluginsGui.Summarize.Summarize"\`
-- Sort: \`Plugin="AlteryxBasePluginsGui.Sort.Sort"\`
-- Formula: \`Plugin="AlteryxBasePluginsGui.Formula.Formula"\`
-- Join: \`Plugin="AlteryxBasePluginsGui.Join.Join"\`
-- OutputData: \`Plugin="AlteryxBasePluginsGui.OutputData.OutputData"\`
-
-**XML TEMPLATE EXAMPLES:**
-
-*Formula Tool (Strict Syntax):*
-\`\`\`xml
-<Node ToolID="5">
-  <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula">
-    <Position x="354" y="54" />
-  </GuiSettings>
-  <Properties>
-    <Configuration>
-      <FormulaFields>
-        <FormulaField field="Risk_Score" type="Int64" size="8" expression="([High_Value] * 2) + IF [Days] > 10 THEN 1 ELSE 0 ENDIF" />
-      </FormulaFields>
-    </Configuration>
-  </Properties>
-</Node>
-\`\`\`
-
-*Input Tool (CSV):*
-\`\`\`xml
-<Node ToolID="1">
-  <GuiSettings Plugin="AlteryxBasePluginsGui.InputData.InputData">
-    <Position x="54" y="54" />
-  </GuiSettings>
-  <Properties>
-    <Configuration>
-      <File FileFormat="0">transactions.csv</File>
-      <FormatSpecificOptions>
-        <HeaderRow>True</HeaderRow>
-      </FormatSpecificOptions>
-    </Configuration>
-  </Properties>
-</Node>
-\`\`\`
-
-**Return ONLY raw XML string. No Markdown blocks.**
-`;
 
 const getClient = () => {
   const apiKey = process.env.API_KEY;
@@ -137,72 +140,79 @@ const getClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-export const parseAclToJson = async (aclText: string, fileName: string): Promise<string> => {
+export const getSchemaFromSample = async (csvContent: string): Promise<SchemaField[]> => {
   try {
     const ai = getClient();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `COMMAND: ANALYZE AND INFER SCHEMA. CSV DATA:\n\n${csvContent}`,
+      config: {
+        systemInstruction: SCHEMA_INFERENCE_SYSTEM_INSTRUCTION,
+        responseMimeType: "application/json",
+        temperature: 0.0,
+      },
+    });
     
-    // Explicit prompt construction as requested
+    const text = response.text;
+    if (!text) throw new Error("Empty response from schema inference.");
+    
+    const schema = JSON.parse(text);
+    return schema;
+
+  } catch (error) {
+    console.error("Gemini Schema Inference Error:", error);
+    throw new Error("Failed to infer schema from sample data.");
+  }
+};
+
+export const parseAclToCanonicalJson = async (
+  aclText: string,
+  fileName: string,
+  schemas: Record<string, SchemaField[] | null>
+): Promise<string> => {
+  try {
+    const ai = getClient();
+
+    const schemaText = Object.entries(schemas)
+      .map(([fileName, columns]) => {
+        if (columns) {
+          const columnDefs = columns.map(c => `${c.name} (${c.type})`).join(', ');
+          return `- Input table "${fileName}" has columns: [${columnDefs}]`;
+        }
+        return `- Input table "${fileName}" schema is not provided.`;
+      })
+      .join('\n');
+
     const prompt = `
-    COMMAND: PARSE THIS ACL TEXT INTO ALTERYX WORKFLOW JSON (NODES & CONNECTIONS).
+    COMMAND: PARSE THIS SCRIPT TEXT INTO THE CANONICAL JSON WORKFLOW FORMAT.
+
+    CONTEXT:
+    The user has provided the following data sources and schemas:
+    ${schemaText}
     
     METADATA:
-    Filename: ${fileName}
+    Main Script Filename: ${fileName}
     
-    --- START OF ACL SOURCE ---
+    --- START OF SCRIPT SOURCE ---
     ${aclText}
-    --- END OF ACL SOURCE ---
+    --- END OF SCRIPT SOURCE ---
     `;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
-        systemInstruction: ALTERYX_JSON_SYSTEM_INSTRUCTION,
+        systemInstruction: ACL_TO_CANONICAL_JSON_SYSTEM_INSTRUCTION,
         responseMimeType: "application/json",
-        temperature: 0.1, // Low temperature for deterministic graph generation
+        temperature: 0.1, 
       },
     });
 
     const text = response.text;
-    if (!text) throw new Error("Empty response from JSON generation step.");
+    if (!text) throw new Error("Empty response from canonical JSON generation step.");
     return text;
   } catch (error) {
-    console.error("Gemini JSON Parsing Error:", error);
-    throw new Error("Failed to parse ACL into Alteryx Graph.");
-  }
-};
-
-export const generateAclXml = async (jsonPlan: string): Promise<string> => {
-  try {
-    const ai = getClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `
-      COMMAND: CONVERT THIS JSON GRAPH INTO ALTERYX .YXMD XML.
-      
-      Current JSON Plan:
-      ${jsonPlan}
-      `,
-      config: {
-        systemInstruction: ALTERYX_XML_SYSTEM_INSTRUCTION,
-        temperature: 0.1,
-      },
-    });
-
-    let text = response.text;
-    if (!text) throw new Error("Empty response from XML generation step.");
-    
-    // Cleanup any potential markdown leakage
-    text = text.replace(/```xml/g, '').replace(/```/g, '').trim();
-    
-    // Ensure XML Header exists
-    if (!text.startsWith('<?xml')) {
-       text = `<?xml version="1.0"?>\n${text}`;
-    }
-    
-    return text;
-  } catch (error) {
-    console.error("Gemini XML Conversion Error:", error);
-    throw new Error("Failed to convert Alteryx Plan to XML.");
+    console.error("Gemini Canonical JSON Parsing Error:", error);
+    throw new Error("Failed to parse script into Canonical JSON.");
   }
 };

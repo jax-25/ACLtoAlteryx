@@ -1,4 +1,27 @@
 
+export interface CanonicalWorkflow {
+  workflow: {
+    version: string;
+    source: string;
+    schema_version: string;
+  };
+  nodes: CanonicalNode[];
+  connections: CanonicalConnection[];
+  unmapped_acl: string[];
+}
+
+export interface CanonicalNode {
+  node_id: string; // e.g. "N1", "N2"
+  schema_id: string; // e.g. "Input", "Filter", "Summarize"
+  acl_source: string;
+  config: Record<string, any>;
+}
+
+export interface CanonicalConnection {
+  from: string; // "N1"
+  to: string; // "N2"
+}
+
 
 export enum AppStatus {
   IDLE = 'IDLE',
@@ -33,4 +56,22 @@ export interface LogEntry {
   timestamp: string;
   level: 'INFO' | 'SUCCESS' | 'WARN' | 'ERROR' | 'SYSTEM';
   message: string;
+}
+
+export interface SchemaField {
+  name: string;
+  type: string;
+}
+
+export interface InputNode {
+  id: number;
+  file: File | null;
+  schema: SchemaField[] | null;
+  name: string;
+}
+
+export interface OutputNode {
+  id: string;
+  name: string;
+  fileName: string;
 }
