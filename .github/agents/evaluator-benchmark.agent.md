@@ -1,6 +1,6 @@
 ---
 name: evaluator-benchmark
-description: Maintain the evaluation harness: add fixtures, golden tests, scoring, and benchmark reports. No parser changes.
+description: Maintain the evaluation harness: add fixtures, golden tests, scoring, and benchmark reports. No parser changes
 ---
 
 # Evaluator & Benchmark Agent
