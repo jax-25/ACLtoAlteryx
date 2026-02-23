@@ -1,0 +1,73 @@
+{
+  "workflow": {
+    "version": "1.0",
+    "source": "ACL",
+    "schema_version": "v1"
+  },
+  "nodes": [
+    {
+      "node_id": "N1",
+      "schema_id": "Input",
+      "acl_source": "OPEN Vendors",
+      "config": { "table_name": "Vendors.csv" }
+    },
+    {
+      "node_id": "N2",
+      "schema_id": "Input",
+      "acl_source": "OPEN Invoices",
+      "config": { "table_name": "Invoices.csv" }
+    },
+    {
+      "node_id": "N3",
+      "schema_id": "Join",
+      "acl_source": "JOIN PKEY Vendor_ID SKEY Vendor_ID",
+      "config": {
+        "join_fields": [
+          { "left": "Vendor_ID", "right": "Vendor_ID" }
+        ]
+      }
+    },
+    {
+      "node_id": "N4",
+      "schema_id": "Unique",
+      "acl_source": "DUPLICATES ON Invoice_Num",
+      "config": {
+        "unique_fields": ["Invoice_Num"]
+      }
+    },
+    {
+      "node_id": "N5",
+      "schema_id": "Select",
+      "acl_source": "EXTRACT FIELDS Vendor_ID Vendor_Name Amount Invoice_Num",
+      "config": {
+        "select_fields": [
+          { "field": "Vendor_ID", "selected": true },
+          { "field": "Vendor_Name", "selected": true },
+          { "field": "Amount", "selected": true },
+          { "field": "Invoice_Num", "selected": true }
+        ]
+      }
+    },
+    {
+      "node_id": "N6",
+      "schema_id": "Sample",
+      "acl_source": "SAMPLE 50",
+      "config": { "n": 50, "method": "First" }
+    },
+    {
+      "node_id": "N7",
+      "schema_id": "Output",
+      "acl_source": "SAVE joined_data.yxdb",
+      "config": { "table_name": "joined_data.yxdb" }
+    }
+  ],
+  "connections": [
+    { "from": "N1", "to": "N3" },
+    { "from": "N2", "to": "N3" },
+    { "from": "N3", "to": "N4" },
+    { "from": "N4", "to": "N5" },
+    { "from": "N5", "to": "N6" },
+    { "from": "N6", "to": "N7" }
+  ],
+  "unmapped_acl": []
+}
