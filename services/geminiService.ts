@@ -164,8 +164,8 @@ export const getSchemaFromSample = async (csvContent: string): Promise<SchemaFie
     }
     return schema;
 
-  } catch (error: any) {
-    const detail = error?.message || String(error);
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
     console.error("Gemini Schema Inference Error:", error);
     throw new Error(`Failed to infer schema from sample data: ${detail}`);
   }
@@ -234,8 +234,8 @@ export const parseAclToCanonicalJson = async (
     }
 
     return text;
-  } catch (error: any) {
-    const detail = error?.message || String(error);
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
     console.error("Gemini Canonical JSON Parsing Error:", error);
     throw new Error(`Failed to parse script "${fileName}" into Canonical JSON: ${detail}`);
   }
