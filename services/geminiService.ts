@@ -140,6 +140,8 @@ const getClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+const MAX_ACL_INPUT_SIZE = 500_000; // ~500KB of ACL text
+
 export const getSchemaFromSample = async (csvContent: string): Promise<SchemaField[]> => {
   try {
     const ai = getClient();
@@ -157,11 +159,15 @@ export const getSchemaFromSample = async (csvContent: string): Promise<SchemaFie
     if (!text) throw new Error("Empty response from schema inference.");
     
     const schema = JSON.parse(text);
+    if (!Array.isArray(schema)) {
+      throw new Error("Schema inference returned non-array: expected [{name, type}, ...].");
+    }
     return schema;
 
-  } catch (error) {
+  } catch (error: any) {
+    const detail = error?.message || String(error);
     console.error("Gemini Schema Inference Error:", error);
-    throw new Error("Failed to infer schema from sample data.");
+    throw new Error(`Failed to infer schema from sample data: ${detail}`);
   }
 };
 
@@ -171,6 +177,14 @@ export const parseAclToCanonicalJson = async (
   schemas: Record<string, SchemaField[] | null>
 ): Promise<string> => {
   try {
+    if (aclText.length > MAX_ACL_INPUT_SIZE) {
+      throw new Error(
+        `ACL script is too large (${(aclText.length / 1024).toFixed(0)} KB). ` +
+        `Maximum supported size is ${(MAX_ACL_INPUT_SIZE / 1024).toFixed(0)} KB. ` +
+        `Consider splitting the script into smaller modules.`
+      );
+    }
+
     const ai = getClient();
 
     const schemaText = Object.entries(schemas)
@@ -210,9 +224,19 @@ export const parseAclToCanonicalJson = async (
 
     const text = response.text;
     if (!text) throw new Error("Empty response from canonical JSON generation step.");
+
+    const parsed = JSON.parse(text);
+    if (!parsed || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.connections)) {
+      throw new Error(
+        "LLM response is not a valid canonical workflow. " +
+        'Expected {nodes: [], connections: [], ...}.'
+      );
+    }
+
     return text;
-  } catch (error) {
+  } catch (error: any) {
+    const detail = error?.message || String(error);
     console.error("Gemini Canonical JSON Parsing Error:", error);
-    throw new Error("Failed to parse script into Canonical JSON.");
+    throw new Error(`Failed to parse script "${fileName}" into Canonical JSON: ${detail}`);
   }
 };

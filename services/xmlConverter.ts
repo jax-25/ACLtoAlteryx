@@ -116,10 +116,10 @@ const createFilterXml = (node: CanonicalNode, index: number): string => {
 const createSummarizeXml = (node: CanonicalNode, index: number): string => {
   const xPos = 54 + index * 150;
   const summarizeFields = (node.config.agg_fields || [])
-    .map((f: any) => `<SummarizeField field="${f.field}" action="${f.action}" rename="${f.rename || `${f.action}_${f.field}`}" />`)
+    .map((f: any) => `<SummarizeField field="${escapeXml(f.field)}" action="${escapeXml(f.action)}" rename="${escapeXml(f.rename || `${f.action}_${f.field}`)}" />`)
     .join('\n');
   const groupByFields = (node.config.group_fields || [])
-    .map((f: any) => `<SummarizeField field="${f}" action="GroupBy" rename="${f}" />`)
+    .map((f: any) => `<SummarizeField field="${escapeXml(f)}" action="GroupBy" rename="${escapeXml(f)}" />`)
     .join('\n');
 
   return `
@@ -178,7 +178,7 @@ const createFormulaXml = (node: CanonicalNode, index: number): string => {
 const createSortXml = (node: CanonicalNode, index: number): string => {
     const xPos = 54 + index * 150;
     const sortFields = (node.config.sort_keys || [])
-      .map((f: any) => `<Field field="${f.field}" order="${f.order}" />`)
+      .map((f: any) => `<Field field="${escapeXml(f.field)}" order="${escapeXml(f.order)}" />`)
       .join('\n');
   
     return `
@@ -224,9 +224,24 @@ const createNodeXml = (node: CanonicalNode, index: number): string => {
 };
 
 export const convertJsonToXml = (workflow: CanonicalWorkflow): string => {
+  if (!workflow || !Array.isArray(workflow.nodes) || !Array.isArray(workflow.connections)) {
+    throw new Error(
+      'Invalid workflow: expected an object with "nodes" and "connections" arrays. ' +
+      'Received: ' + (workflow ? `nodes=${typeof workflow.nodes}, connections=${typeof workflow.connections}` : 'null/undefined')
+    );
+  }
+
   const nodeMap = new Map<string, number>();
+  const schemaMap = new Map<string, string>();
   workflow.nodes.forEach((node, index) => {
+    if (!node.node_id || !node.schema_id) {
+      throw new Error(
+        `Invalid node at index ${index}: missing required "node_id" or "schema_id". ` +
+        `Got node_id="${node.node_id}", schema_id="${node.schema_id}".`
+      );
+    }
     nodeMap.set(node.node_id, index + 1);
+    schemaMap.set(node.node_id, node.schema_id);
   });
 
   const nodesXml = workflow.nodes
@@ -237,10 +252,16 @@ export const convertJsonToXml = (workflow: CanonicalWorkflow): string => {
     .map(conn => {
         const fromToolID = nodeMap.get(conn.from);
         const toToolID = nodeMap.get(conn.to);
-        if (!fromToolID || !toToolID) return '';
-        
-        const fromNode = workflow.nodes.find(n => n.node_id === conn.from);
-        const fromAnchor = fromNode?.schema_id === 'Filter' ? 'True' : 'Output';
+        if (fromToolID === undefined || toToolID === undefined) {
+          console.warn(
+            `Skipping connection: "${conn.from}" -> "${conn.to}". ` +
+            `${fromToolID === undefined ? `Source node "${conn.from}" not found.` : ''} ` +
+            `${toToolID === undefined ? `Destination node "${conn.to}" not found.` : ''}`
+          );
+          return '';
+        }
+
+        const fromAnchor = schemaMap.get(conn.from) === 'Filter' ? 'True' : 'Output';
 
         return `
     <Connection>
