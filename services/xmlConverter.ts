@@ -203,6 +203,113 @@ const createSortXml = (node: CanonicalNode, index: number): string => {
 }
 
 
+const createJoinXml = (node: CanonicalNode, index: number): string => {
+    const xPos = 54 + index * 150;
+    const joinFields = (node.config.join_fields || [])
+      .map((f: any) => `<Field LeftField="${f.left}" RightField="${f.right}" />`)
+      .join('\n');
+
+    return `
+    <Node ToolID="${index + 1}">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Join.Join">
+        <Position x="${xPos}" y="54" />
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <JoinInfo>
+            ${joinFields}
+          </JoinInfo>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name />
+          <DefaultAnnotationText />
+          <Left value="False" />
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxJoin" />
+    </Node>`;
+}
+
+const createSelectXml = (node: CanonicalNode, index: number): string => {
+    const xPos = 54 + index * 150;
+    const selectFields = (node.config.select_fields || [])
+      .map((f: any) => `<SelectField field="${f.field}" selected="${f.selected ? 'True' : 'False'}" />`)
+      .join('\n');
+
+    return `
+    <Node ToolID="${index + 1}">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="${xPos}" y="54" />
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <SelectFields>
+            ${selectFields}
+          </SelectFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name />
+          <DefaultAnnotationText />
+          <Left value="False" />
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxSelect" />
+    </Node>`;
+}
+
+const createSampleXml = (node: CanonicalNode, index: number): string => {
+    const xPos = 54 + index * 150;
+    const n = node.config.n || 1;
+    const method = node.config.method || 'First';
+
+    return `
+    <Node ToolID="${index + 1}">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Sample.Sample">
+        <Position x="${xPos}" y="54" />
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Mode>${method}</Mode>
+          <N>${n}</N>
+          <GroupFields orderChanged="False" />
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name />
+          <DefaultAnnotationText>${method} ${n} rows</DefaultAnnotationText>
+          <Left value="False" />
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxSample" />
+    </Node>`;
+}
+
+const createUniqueXml = (node: CanonicalNode, index: number): string => {
+    const xPos = 54 + index * 150;
+    const uniqueFields = (node.config.unique_fields || [])
+      .map((f: string) => `<Field field="${f}" />`)
+      .join('\n');
+
+    return `
+    <Node ToolID="${index + 1}">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Unique.Unique">
+        <Position x="${xPos}" y="54" />
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <UniqueFields>
+            ${uniqueFields}
+          </UniqueFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name />
+          <DefaultAnnotationText />
+          <Left value="False" />
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxUnique" />
+    </Node>`;
+}
+
 const createNodeXml = (node: CanonicalNode, index: number): string => {
   switch (node.schema_id) {
     case 'Input':
@@ -217,6 +324,14 @@ const createNodeXml = (node: CanonicalNode, index: number): string => {
       return createFormulaXml(node, index);
     case 'Sort':
       return createSortXml(node, index);
+    case 'Join':
+      return createJoinXml(node, index);
+    case 'Select':
+      return createSelectXml(node, index);
+    case 'Sample':
+      return createSampleXml(node, index);
+    case 'Unique':
+      return createUniqueXml(node, index);
     default:
       console.warn(`Unknown schema_id: ${node.schema_id}. No XML will be generated for this node.`);
       return `<!-- UNMAPPED NODE: ${node.schema_id} - ${escapeXml(node.acl_source)} -->`;
@@ -240,7 +355,10 @@ export const convertJsonToXml = (workflow: CanonicalWorkflow): string => {
         if (!fromToolID || !toToolID) return '';
         
         const fromNode = workflow.nodes.find(n => n.node_id === conn.from);
-        const fromAnchor = fromNode?.schema_id === 'Filter' ? 'True' : 'Output';
+        let fromAnchor = 'Output';
+        if (fromNode?.schema_id === 'Filter') fromAnchor = 'True';
+        else if (fromNode?.schema_id === 'Join') fromAnchor = 'Join';
+        else if (fromNode?.schema_id === 'Unique') fromAnchor = 'Unique';
 
         return `
     <Connection>

@@ -1,0 +1,67 @@
+{
+  "workflow": {
+    "version": "1.0",
+    "source": "ACL",
+    "schema_version": "v1"
+  },
+  "nodes": [
+    {
+      "node_id": "N1",
+      "schema_id": "Input",
+      "acl_source": "OPEN AP_Transactions",
+      "config": { "table_name": "AP_Transactions.csv" }
+    },
+    {
+      "node_id": "N2",
+      "schema_id": "Formula",
+      "acl_source": "DEFINE FIELD Inv_Year COMPUTED YEAR(Invoice_Date)\nDEFINE FIELD High_Value COMPUTED IF(Amount >= 100000, 1, 0)",
+      "config": {
+        "formulas": [
+          { "field": "Inv_Year", "expression": "YEAR(Invoice_Date)" },
+          { "field": "High_Value", "expression": "IF(Amount >= 100000, 1, 0)" }
+        ]
+      }
+    },
+    {
+      "node_id": "N3",
+      "schema_id": "Filter",
+      "acl_source": "IF Amount >= 100000",
+      "config": { "filter_expression": "Amount >= 100000" }
+    },
+    {
+      "node_id": "N4",
+      "schema_id": "Summarize",
+      "acl_source": "SUMMARIZE ON Vendor_ID SUBTOTAL Amount",
+      "config": {
+        "group_fields": ["Vendor_ID"],
+        "agg_fields": [
+          { "field": "Amount", "action": "Sum", "rename": "Total_Amount" }
+        ]
+      }
+    },
+    {
+      "node_id": "N5",
+      "schema_id": "Sort",
+      "acl_source": "SORT ON -Total_Amount",
+      "config": {
+        "sort_keys": [
+          { "field": "Total_Amount", "order": "Descending" }
+        ]
+      }
+    },
+    {
+      "node_id": "N6",
+      "schema_id": "Output",
+      "acl_source": "SAVE high_value_vendors.yxdb",
+      "config": { "table_name": "high_value_vendors.yxdb" }
+    }
+  ],
+  "connections": [
+    { "from": "N1", "to": "N2" },
+    { "from": "N2", "to": "N3" },
+    { "from": "N3", "to": "N4" },
+    { "from": "N4", "to": "N5" },
+    { "from": "N5", "to": "N6" }
+  ],
+  "unmapped_acl": []
+}

@@ -66,7 +66,7 @@ Each entry in nodes must follow this structure:
   "config": {}
 }
 - node_id: Must be unique per node (e.g., "N1", "N2").
-- schema_id: Must be one of: "Input", "Output", "Filter", "Summarize", "Sort", "Formula".
+- schema_id: Must be one of: "Input", "Output", "Filter", "Summarize", "Sort", "Formula", "Join", "Select", "Sample", "Unique".
 - acl_source: The raw ACL line(s) this node represents.
 - config: Node-specific settings.
 
@@ -113,6 +113,40 @@ Each entry in nodes must follow this structure:
       { "field": "Amount", "order": "Descending" }
     ],
     "output_table": "AP_Sorted_RiskScore"
+  }
+
+- Join:
+  - Maps to ACL JOIN commands. Specify the fields to join on from each table.
+  "schema_id": "Join",
+  "config": {
+    "join_fields": [
+      { "left": "Vendor_ID", "right": "Vendor_ID" }
+    ]
+  }
+
+- Select:
+  - Maps to ACL EXTRACT / field selection operations. Specifies which fields to keep.
+  "schema_id": "Select",
+  "config": {
+    "select_fields": [
+      { "field": "Vendor_ID", "selected": true },
+      { "field": "Amount", "selected": true }
+    ]
+  }
+
+- Sample:
+  - Maps to ACL SAMPLE or FIRSTNNN / TOP commands. Takes a subset of rows.
+  "schema_id": "Sample",
+  "config": {
+    "n": 100,
+    "method": "First"
+  }
+
+- Unique:
+  - Maps to ACL DUPLICATES commands. Identifies unique and duplicate records by key fields.
+  "schema_id": "Unique",
+  "config": {
+    "unique_fields": ["Vendor_ID", "Invoice_Num"]
   }
 
 4. Connections Between Nodes
