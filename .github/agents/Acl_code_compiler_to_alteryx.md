@@ -12,3 +12,11 @@ description: Your mission is to basically create a test suites and modufy the te
 
 Describe what your agent does here...
 read the description above you must make a new document or something idk something that communciates your results of the success to me i need to know progress is being made with you finding out things wrong and how we need to improve the parsing engine.
+
+# Negative use cases:
+
+  
+
+# postigive use cases:
+
+# Dont touch:
